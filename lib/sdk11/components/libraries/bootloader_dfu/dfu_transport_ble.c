@@ -49,8 +49,8 @@ enum { BLE_CONN_CFG_HIGH_BANDWIDTH = 1 };
 // limit of 8 chars
 #define DEVICE_NAME                          "AdaDFU"                                                /**< Name of device. Will be included in the advertising data. */
 
-#define MIN_CONN_INTERVAL                    (uint16_t)(MSEC_TO_UNITS(10, UNIT_1_25_MS))             /**< Minimum acceptable connection interval (11.25 milliseconds). */
-#define MAX_CONN_INTERVAL                    (uint16_t)(MSEC_TO_UNITS(30, UNIT_1_25_MS))             /**< Maximum acceptable connection interval (15 milliseconds). */
+#define MIN_CONN_INTERVAL                    (uint16_t)(MSEC_TO_UNITS(7.5, UNIT_1_25_MS))           /**< Minimum acceptable connection interval (7.5 milliseconds) - optimal for DFU. */
+#define MAX_CONN_INTERVAL                    (uint16_t)(MSEC_TO_UNITS(15, UNIT_1_25_MS))            /**< Maximum acceptable connection interval (15 milliseconds) - optimal for DFU. */
 #define SLAVE_LATENCY                        0                                                       /**< Slave latency. */
 #define CONN_SUP_TIMEOUT                     (4 * 100)                                               /**< Connection supervisory timeout (4 seconds). */
 
@@ -106,6 +106,7 @@ static dfu_ble_peer_data_t  m_ble_peer_data;                                    
 static bool                 m_ble_peer_data_valid    = false;                                        /**< True if BLE Peer data has been exchanged from application. */
 static uint32_t             m_direct_adv_cnt         = APP_DIRECTED_ADV_TIMEOUT;                     /**< Counter of direct advertisements. */
 static uint8_t            * mp_final_packet;                                                         /**< Pointer to final data packet received. When callback for succesful packet handling is received from dfu bank handling a transfer complete response can be sent to peer. */
+static bool                 m_first_data_packet = true;                                            /**< Flag to track first data packet for LED state optimization. */
 
 
 static ble_gap_addr_t      const * m_whitelist[1];                                                  /**< List of peers in whitelist (only one) */
@@ -581,14 +582,17 @@ static void on_dfu_evt(ble_dfu_t * p_dfu, ble_dfu_evt_t * p_evt)
                 err_code = ble_dfu_response_send(p_dfu, BLE_DFU_INIT_PROCEDURE, resp_val);
                 APP_ERROR_CHECK(err_code);
             }
-            break;
-
-        case BLE_DFU_RECEIVE_APP_DATA:
+            break;        case BLE_DFU_RECEIVE_APP_DATA:
             m_pkt_type = PKT_TYPE_FIRMWARE_DATA;
+            m_first_data_packet = true;  // Reset flag for new transfer
             break;
 
         case BLE_DFU_PACKET_WRITE:
-            led_state(STATE_WRITING_STARTED);
+            // Only call led_state for the first packet to avoid I2C overhead during high-speed transfer
+            if (m_first_data_packet) {
+                led_state(STATE_WRITING_STARTED);
+                m_first_data_packet = false;
+            }
             on_dfu_pkt_write(p_dfu, p_evt);
             break;
 
@@ -741,10 +745,25 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 #endif
 
     switch (p_ble_evt->header.evt_id)
-    {
-        case BLE_GAP_EVT_CONNECTED:
+    {        case BLE_GAP_EVT_CONNECTED:
             m_conn_handle    = p_ble_evt->evt.gap_evt.conn_handle;
             m_is_advertising = false;
+            
+            // Request optimal connection parameters for DFU performance
+            {
+                ble_gap_conn_params_t optimal_params;
+                optimal_params.min_conn_interval = MIN_CONN_INTERVAL;
+                optimal_params.max_conn_interval = MAX_CONN_INTERVAL;
+                optimal_params.slave_latency     = SLAVE_LATENCY;
+                optimal_params.conn_sup_timeout  = CONN_SUP_TIMEOUT;
+                
+                err_code = sd_ble_gap_conn_param_update(m_conn_handle, &optimal_params);
+                // It's OK if this fails, the central will use what it supports
+                if (err_code != NRF_SUCCESS && err_code != NRF_ERROR_BUSY && err_code != NRF_ERROR_INVALID_STATE)
+                {
+                    APP_ERROR_CHECK(err_code);
+                }
+            }
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
@@ -904,6 +923,26 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
           APP_ERROR_CHECK( sd_ble_gatts_exchange_mtu_reply(m_conn_handle, att_mtu) );
         }
         break;
+
+        case BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST:
+            // Accept connection parameters update request from central
+            err_code = sd_ble_gap_conn_param_update(p_ble_evt->evt.gap_evt.conn_handle,
+                                                   &p_ble_evt->evt.gap_evt.params.conn_param_update_request.conn_params);
+            if (err_code != NRF_SUCCESS && err_code != NRF_ERROR_BUSY && err_code != NRF_ERROR_INVALID_STATE)
+            {
+                APP_ERROR_CHECK(err_code);
+            }
+            break;
+
+        case BLE_GAP_EVT_CONN_PARAM_UPDATE:
+            // Connection parameters have been updated
+            #ifdef CFG_DEBUG
+            PRINTF("Conn params updated: interval=%d, latency=%d, timeout=%d\r\n",
+                   p_ble_evt->evt.gap_evt.params.conn_param_update.conn_params.min_conn_interval,
+                   p_ble_evt->evt.gap_evt.params.conn_param_update.conn_params.slave_latency,
+                   p_ble_evt->evt.gap_evt.params.conn_param_update.conn_params.conn_sup_timeout);
+            #endif
+            break;
 
         default:
             // No implementation needed.

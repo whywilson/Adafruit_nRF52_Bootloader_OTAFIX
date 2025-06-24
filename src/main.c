@@ -67,6 +67,10 @@
 #include "pstorage.h"
 #include "nrfx_nvmc.h"
 
+#ifdef BOARD_HAS_SSD1306
+#include "ssd1306_drv.h"
+#endif
+
 #ifdef NRF_USBD
 
 #include "uf2/uf2.h"
@@ -142,7 +146,8 @@ bool _ota_dfu = false;
 bool _ota_connected = false;
 bool _sd_inited = false;
 
-bool is_ota(void) {
+bool is_ota(void) 
+{
   return _ota_dfu;
 }
 
@@ -172,6 +177,26 @@ int main(void) {
 
   board_init();
   bootloader_init();
+
+  // Initialize SSD1306 display
+#ifdef BOARD_HAS_SSD1306
+  if (ssd1306_init()) {
+    PRINTF("SSD1306 init success\r\n");
+    // 显示中字体启动画面，优化：减少到200ms
+    #ifdef BOARD_MT001
+    ssd1306_draw_string_centered(26, "Meshtiny");
+    #elif BOARD_GAT562
+    ssd1306_draw_string_centered(26, "GAT562");
+    #else
+    ssd1306_draw_string_centered(26, "nRF52840");
+    #endif
+    ssd1306_display();
+    // 显示启动画面300毫秒
+    NRFX_DELAY_MS(300);
+  } else {
+    PRINTF("SSD1306 init failed\r\n");
+  }
+#endif
   PRINTF("Bootloader Start\r\n");
   led_state(STATE_BOOTLOADER_STARTED);
 
@@ -184,6 +209,15 @@ int main(void) {
 
     led_state(STATE_WRITING_FINISHED);
   }
+#ifdef BOARD_HAS_SSD1306
+  if (ssd1306_is_enabled()) {
+  // show booting screen
+#ifdef BOARD_HAS_SSD1306
+  ssd1306_draw_string_centered(40, "......");
+  ssd1306_display();
+#endif
+  }
+#endif
 
   // Check all inputs and enter DFU if needed
   // Return when DFU process is complete (or not entered at all)
@@ -349,13 +383,30 @@ static uint32_t ble_stack_init(void) {
   blecfg.gatts_cfg.service_changed.service_changed = 1;
   sd_ble_cfg_set(BLE_GATTS_CFG_SERVICE_CHANGED, &blecfg, ram_start);
 
+  // GATTS Attribute Table Size - Increase for DFU service
+  varclr(&blecfg);
+  blecfg.gatts_cfg.attr_tab_size.attr_tab_size = 1024;  // Increased from default
+  sd_ble_cfg_set(BLE_GATTS_CFG_ATTR_TAB_SIZE, &blecfg, ram_start);
+
   // ATT MTU
   varclr(&blecfg);
   blecfg.conn_cfg.conn_cfg_tag = BLE_CONN_CFG_HIGH_BANDWIDTH;
   blecfg.conn_cfg.params.gatt_conn_cfg.att_mtu = BLEGATT_ATT_MTU_MAX;
   sd_ble_cfg_set(BLE_CONN_CFG_GATT, &blecfg, ram_start);
 
-  // Event Length + HVN queue + WRITE CMD queue setting affecting bandwidth
+  // GATTS HVN TX Queue - Critical for packet receipt notifications
+  varclr(&blecfg);
+  blecfg.conn_cfg.conn_cfg_tag = BLE_CONN_CFG_HIGH_BANDWIDTH;
+  blecfg.conn_cfg.params.gatts_conn_cfg.hvn_tx_queue_size = 32;  // Increased for better DFU performance
+  sd_ble_cfg_set(BLE_CONN_CFG_GATTS, &blecfg, ram_start);
+
+  // GATTC Write CMD Queue - Important for write operations
+  varclr(&blecfg);
+  blecfg.conn_cfg.conn_cfg_tag = BLE_CONN_CFG_HIGH_BANDWIDTH;
+  blecfg.conn_cfg.params.gattc_conn_cfg.write_cmd_tx_queue_size = 32;  // Increased for better DFU performance
+  sd_ble_cfg_set(BLE_CONN_CFG_GATTC, &blecfg, ram_start);
+
+  // Event Length + connection count setting affecting bandwidth
   varclr(&blecfg);
   blecfg.conn_cfg.conn_cfg_tag = BLE_CONN_CFG_HIGH_BANDWIDTH;
   blecfg.conn_cfg.params.gap_conn_cfg.conn_count = 1;
@@ -366,12 +417,11 @@ static uint32_t ble_stack_init(void) {
   // Note: Interrupt state (enabled, forwarding) is not work properly if not enable ble
   sd_ble_enable(&ram_start);
 
-#if 0
+  // Enable Data Length Extension for better throughput
   ble_opt_t  opt;
   varclr(&opt);
   opt.common_opt.conn_evt_ext.enable = 1; // enable Data Length Extension
   sd_ble_opt_set(BLE_COMMON_OPT_CONN_EVT_EXT, &opt);
-#endif
 
   return NRF_SUCCESS;
 }

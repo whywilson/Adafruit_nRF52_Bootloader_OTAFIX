@@ -1,0 +1,2 @@
+intelhex==2.3.0
+adafruit-nrfutil==0.5.3.post16

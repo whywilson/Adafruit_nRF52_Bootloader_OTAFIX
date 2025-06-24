@@ -72,3 +72,5 @@ venv/
 lib/python3.13/
 lib64
 pyvenv.cfg
+
+build/

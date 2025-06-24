@@ -22,7 +22,17 @@
  * THE SOFTWARE.
  */
 
+#include "app_error.h"
+#include "nrf_gpio.h"
 #include "boards.h"
+
+#ifdef BOARD_HAS_SSD1306
+#include "ssd1306_drv.h"
+#endif
+
+// Forward declaration  
+extern bool is_ota(void);
+
 #include "nrf_pwm.h"
 #include "app_scheduler.h"
 #include "app_timer.h"
@@ -392,14 +402,29 @@ void led_tick(void) {
 
 static uint32_t rgb_color;
 static bool temp_color_active = false;
+static uint32_t last_display_state = 0xFFFFFFFF;
+static bool dfu_transfer_active = false;  // Track if DFU transfer is active
 
 void led_state(uint32_t state) {
   uint32_t new_rgb_color = rgb_color;
   uint32_t temp_color = 0;
+  
+  // 只有状态改变时才更新显示内容
+  bool display_changed = (last_display_state != state);
+  
   switch (state) {
     case STATE_USB_MOUNTED:
       new_rgb_color = 0x00ff00;
       primary_cycle_length = 3000;
+      // Display bootloader screen for USB mode
+#ifdef BOARD_HAS_SSD1306
+      if (ssd1306_is_enabled() && display_changed) {
+        ssd1306_clear();
+        ssd1306_draw_string_centered(24, "USB Mode");
+        ssd1306_draw_string_centered(32, "Bootloader");
+        ssd1306_display();
+      }
+#endif
       break;
 
     case STATE_BOOTLOADER_STARTED:
@@ -411,11 +436,34 @@ void led_state(uint32_t state) {
     case STATE_WRITING_STARTED:
       temp_color = 0xff0000;
       primary_cycle_length = 100;
+      if (is_ota()) {
+#ifdef BOARD_HAS_SSD1306
+        // Only update display once when DFU transfer starts, not on every packet
+        if (ssd1306_is_enabled() && display_changed && !dfu_transfer_active) {
+          ssd1306_clear();
+          ssd1306_draw_string_centered(24, "BLE");
+          ssd1306_draw_string_centered(32, "Uploading");
+          ssd1306_display();
+          dfu_transfer_active = true;  // Mark transfer as active to avoid further updates
+        }
+#endif
+      } 
       break;
 
     case STATE_WRITING_FINISHED:
       // Empty means to unset any temp colors.
       primary_cycle_length = 3000;
+      dfu_transfer_active = false;  // Reset transfer flag
+      if (is_ota()) {
+#ifdef BOARD_HAS_SSD1306
+        if (ssd1306_is_enabled() && display_changed) {
+          ssd1306_clear();
+          ssd1306_draw_string_centered(24, "BLE DFU");
+          ssd1306_draw_string_centered(32, "Complete");
+          ssd1306_display();
+        }
+#endif
+      } 
       break;
 
     case STATE_BLE_CONNECTED:
@@ -425,6 +473,14 @@ void led_state(uint32_t state) {
       #else
       primary_cycle_length = 3000;
       #endif
+#ifdef BOARD_HAS_SSD1306
+          if (ssd1306_is_enabled()) {
+            ssd1306_clear();
+            ssd1306_draw_string_centered(24, "BLE DFU");
+            ssd1306_draw_string_centered(32, "Connected");
+            ssd1306_display();
+          }
+#endif
       break;
 
     case STATE_BLE_DISCONNECTED:
@@ -433,6 +489,14 @@ void led_state(uint32_t state) {
       secondary_cycle_length = 300;
       #else
       primary_cycle_length = 300;
+#ifdef BOARD_HAS_SSD1306
+          if (ssd1306_is_enabled()) {
+            ssd1306_clear();
+            ssd1306_draw_string_centered(24, "BLE DFU");
+            ssd1306_draw_string_centered(32, "Waiting");
+            ssd1306_display();
+          }
+#endif
       #endif
       break;
 
