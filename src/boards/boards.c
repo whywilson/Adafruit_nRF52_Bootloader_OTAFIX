@@ -101,9 +101,41 @@ void SysTick_Handler(void) {
         progress_str[2] = '\0';
       }
       
-      // Clear only the progress line area before drawing new text
-      ssd1306_draw_rect(0, 36, 128, 8, false);  // Clear line 36 (height 8 pixels)
-      ssd1306_draw_string_centered(36, progress_str);
+      // Calculate overall centered position for progress bar and text
+      int bar_w = 60;
+      int bar_h = 6;
+      int text_w = 24; // Width for "100%"
+      int gap = 4; // Gap between bar and text
+      int total_w = bar_w + gap + text_w;
+      int start_x = (128 - total_w) / 2;
+      int bar_x = start_x;
+      int bar_y = 36;
+      int text_x = bar_x + bar_w + gap;
+      
+      // Clear the entire progress area first
+      ssd1306_draw_rect(0, bar_y - 2, 128, bar_h + 4, false);
+      
+      // Draw progress bar border (outline only)
+      // Top and bottom lines
+      for (int x = 0; x < bar_w; x++) {
+        ssd1306_set_pixel(bar_x + x, bar_y, true);         // Top line
+        ssd1306_set_pixel(bar_x + x, bar_y + bar_h - 1, true); // Bottom line
+      }
+      // Left and right lines
+      for (int y = 0; y < bar_h; y++) {
+        ssd1306_set_pixel(bar_x, bar_y + y, true);             // Left line
+        ssd1306_set_pixel(bar_x + bar_w - 1, bar_y + y, true); // Right line
+      }
+      
+      // Fill progress bar
+      int fill_w = (progress * (bar_w - 2)) / 100; // -2 for border
+      if (fill_w > 0) {
+        ssd1306_draw_rect(bar_x + 1, bar_y + 1, fill_w, bar_h - 2, true);
+      }
+      
+      // Draw percentage text
+      ssd1306_draw_string(text_x, bar_y - 1, progress_str);
+
       ssd1306_display();
       
       last_shown_progress = progress;
@@ -498,7 +530,7 @@ void led_state(uint32_t state) {
           // Show initial waiting state immediately
           ssd1306_clear();
           ssd1306_draw_string_centered(20, "BLE DFU");
-          ssd1306_draw_string_centered(36, "Waiting");
+          ssd1306_draw_string_centered(36, "Initializing");
           ssd1306_display();
         }
 #endif
