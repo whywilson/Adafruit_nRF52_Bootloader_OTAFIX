@@ -182,14 +182,12 @@ int main(void) {
 #ifdef BOARD_HAS_SSD1306
   if (ssd1306_init()) {
     PRINTF("SSD1306 init success\r\n");
-    // 显示中字体启动画面，优化：减少到200ms
     #ifdef BRAND_NAME
     ssd1306_draw_string_centered(26, BRAND_NAME);
     #else
-    ssd1306_draw_string_centered(26, "nRF52840");
+    ssd1306_draw_string_centered(26, "nRF52");
     #endif
     ssd1306_display();
-    // 显示启动画面300毫秒
     NRFX_DELAY_MS(300);
   } else {
     PRINTF("SSD1306 init failed\r\n");
