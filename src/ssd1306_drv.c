@@ -1,11 +1,3 @@
-/*
- * @brief: 已修正的SSD1306驱动逻辑。
- * @author: Dylan 
- * @details : 记得把注释删了
- * 主要变更:
- * - 在 ssd1306_display 函数中:重写了此函数，使其采用"页寻址模式”
- * - 逻辑进行屏幕刷新。放弃了水平寻址模式下的整块数据发送方式。
- */
 #ifdef BOARD_HAS_SSD1306
 
 #include "ssd1306_drv.h"
@@ -27,45 +19,31 @@ bool ssd1306_init(void) {
     
     display_enabled = true;
 
-    // --- SSD1306 标准初始化序列 ---
-    ssd1306_write_command(0xAE); // 关闭显示
-
-    ssd1306_write_command(0xD5); // 设置显示时钟分频比/振荡器频率
-    ssd1306_write_command(0xF0); // 设置分频比
-
-    ssd1306_write_command(0xA8); // 设置多路复用率
-    ssd1306_write_command(0x3F); // 128x64屏幕对应64 MUX
-
-    ssd1306_write_command(0xD3); // 设置显示偏移
-    ssd1306_write_command(0x00); // 无偏移
-
-    ssd1306_write_command(0x40 | 0x0); // 设置显示起始行 (0)
-
-    ssd1306_write_command(0x8D); // 电荷泵设置
-    ssd1306_write_command(0x14); // 使能电荷泵
-
-    ssd1306_write_command(0x20); // 设置内存寻址模式
-    ssd1306_write_command(0x00); // 水平寻址模式
-
-    ssd1306_write_command(0xA0); // 设置段重映射为正常模式
-    
-    ssd1306_write_command(0xC0); // 设置COM输出扫描方向为正向 (C0)
-
-    ssd1306_write_command(0xDA); // 设置COM引脚硬件配置
-    ssd1306_write_command(0x12); // 适用于128x64的交替COM引脚配置
-
-    ssd1306_write_command(0x81); // 设置对比度控制
-    ssd1306_write_command(0xCF); // 设置对比度值
-
-    ssd1306_write_command(0xD9); // 设置预充电周期
-    ssd1306_write_command(0xF1); // 设置预充电值
-
-    ssd1306_write_command(0xDB); // 设置VCOMH反压电平
-    ssd1306_write_command(0x40); // VCOMH = ~0.77xVCC
-
-    ssd1306_write_command(0xA4); // 全局显示开启 (恢复到RAM内容)
-    ssd1306_write_command(0xA6); // 设置为正常显示 (非反色)
-    ssd1306_write_command(0x2E); // 停用滚动
+    ssd1306_write_command(0xAE);
+    ssd1306_write_command(0xD5); 
+    ssd1306_write_command(0xF0);
+    ssd1306_write_command(0xA8);
+    ssd1306_write_command(0x3F);
+    ssd1306_write_command(0xD3);
+    ssd1306_write_command(0x00);
+    ssd1306_write_command(0x40 | 0x0);
+    ssd1306_write_command(0x8D);
+    ssd1306_write_command(0x14);
+    ssd1306_write_command(0x20);
+    ssd1306_write_command(0x00);
+    ssd1306_write_command(0xA1);
+    ssd1306_write_command(0xC8);
+    ssd1306_write_command(0xDA);
+    ssd1306_write_command(0x12);
+    ssd1306_write_command(0x81);
+    ssd1306_write_command(0xCF); 
+    ssd1306_write_command(0xD9);
+    ssd1306_write_command(0xF1);
+    ssd1306_write_command(0xDB);
+    ssd1306_write_command(0x40);
+    ssd1306_write_command(0xA4);
+    ssd1306_write_command(0xA6);
+    ssd1306_write_command(0x2E);
 
     ssd1306_clear();
     ssd1306_display();
@@ -182,10 +160,8 @@ void ssd1306_draw_string_centered(uint8_t y, const char* str) {
     
     uint8_t total_width = len * 8;
     if (total_width > SSD1306_WIDTH) {
-        // 字符串太长，从左边开始显示
         ssd1306_draw_string(0, y, str);
     } else {
-        // 居中显示
         uint8_t x = (SSD1306_WIDTH - total_width) / 2;
         ssd1306_draw_string(x, y, str);
     }
