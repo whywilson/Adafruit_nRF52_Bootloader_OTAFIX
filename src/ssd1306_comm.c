@@ -24,7 +24,6 @@ bool ssd1306_comm_init(void) {
     nrfx_twi_enable(&twi);
     twi_initialized = true;
 
-    // let device more stable
     nrf_delay_ms(100);
     return true;
 
@@ -46,7 +45,6 @@ void ssd1306_write_command(uint8_t cmd) {
     nrfx_twi_xfer_desc_t xfer = NRFX_TWI_XFER_DESC_TX(SSD1306_I2C_ADDR, data, 2);
     nrfx_twi_xfer(&twi, &xfer, 0);
     
-    // 短延时确保命令执行
     nrf_delay_ms(1);
 }
 
@@ -70,7 +68,6 @@ void ssd1306_write_data(const uint8_t* data, uint16_t len) {
 
         sent += to_send;
         
-        // 小延时避免I2C总线过载
         if (sent < len) {
             nrf_delay_ms(1);
         }
